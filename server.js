@@ -24,8 +24,6 @@ const creditorRoutes = require('./src/routes/creditors');
 
 const app = express();
 
-connectDB();
-
 app.use(helmet());
 app.use(corsConfig);
 app.use(express.json({ limit: '10kb' }));
@@ -54,8 +52,18 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(`Servidor PoupPT a correr na porta ${PORT}`);
-});
+const iniciarServidor = async () => {
+  try {
+    await connectDB();
+    app.listen(PORT, () => {
+      console.log(`Servidor PoupPT a correr na porta ${PORT}`);
+    });
+  } catch (err) {
+    console.error('Falha ao iniciar servidor:', err.message);
+    process.exit(1);
+  }
+};
+
+iniciarServidor();
 
 module.exports = app;
