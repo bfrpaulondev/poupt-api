@@ -47,7 +47,7 @@ exports.validarTransacao = (dados) => {
     erros.push('Categoria e obrigatoria');
   }
 
-  if (dados.jar && !['necessidades', 'liberdade', 'poupanca', 'educacao', 'lazer', 'doar'].includes(dados.jar)) {
+  if (dados.jar && !['necessities', 'freedom', 'savings', 'education', 'play', 'give'].includes(dados.jar)) {
     erros.push('Frasco invalido');
   }
 
@@ -123,7 +123,7 @@ exports.validarInvestimento = (dados) => {
 };
 
 exports.validarFrascos = (percentagens) => {
-  const chaves = ['necessidades', 'liberdade', 'poupanca', 'educacao', 'lazer', 'doar'];
+  const chaves = ['necessities', 'freedom', 'savings', 'education', 'play', 'give'];
   const total = chaves.reduce((soma, chave) => soma + (percentagens[chave] || 0), 0);
 
   if (total !== 100) {

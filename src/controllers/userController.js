@@ -3,7 +3,7 @@ const { detectarModo } = require('../services/modeDetector');
 
 exports.obterPerfil = async (req, res, next) => {
   try {
-    const utilizador = await User.findById(req.user._id);
+    const utilizador = await User.findById(req.user.id);
     res.json({ success: true, data: utilizador });
   } catch (erro) {
     next(erro);
@@ -22,13 +22,13 @@ exports.atualizarPerfil = async (req, res, next) => {
     });
 
     if (dados.email) {
-      const existente = await User.findOne({ email: dados.email, _id: { $ne: req.user._id } });
+      const existente = await User.findOne({ email: dados.email, _id: { $ne: req.user.id } });
       if (existente) {
         return res.status(400).json({ success: false, error: 'Ja existe uma conta com este email' });
       }
     }
 
-    const utilizador = await User.findByIdAndUpdate(req.user._id, dados, {
+    const utilizador = await User.findByIdAndUpdate(req.user.id, dados, {
       new: true,
       runValidators: true,
     });
@@ -52,10 +52,10 @@ exports.alterarModo = async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Modo financeiro invalido' });
     }
 
-    const modoDetetado = await detectarModo(req.user._id, req.user.income);
+    const modoDetetado = await detectarModo(req.user.id, req.user.income);
 
     const utilizador = await User.findByIdAndUpdate(
-      req.user._id,
+      req.user.id,
       { financialMode: modoDesejado },
       { new: true, runValidators: true }
     );
@@ -92,7 +92,7 @@ exports.configurarCoach = async (req, res, next) => {
       dados.coachPersonality = coachPersonality;
     }
 
-    const utilizador = await User.findByIdAndUpdate(req.user._id, dados, {
+    const utilizador = await User.findByIdAndUpdate(req.user.id, dados, {
       new: true,
       runValidators: true,
     });

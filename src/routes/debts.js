@@ -1,19 +1,20 @@
 const express = require('express');
 const router = express.Router();
+const { protect } = require('../middleware/auth');
 const {
   getDebts, createDebt, updateDebt, deleteDebt,
   addPayment, snowballOrder,
   getInformalDebts, createInformalDebt, addInformalPayment
 } = require('../controllers/debtController');
 
-router.get('/', getDebts);
-router.post('/', createDebt);
-router.put('/:id', updateDebt);
-router.delete('/:id', deleteDebt);
-router.post('/:id/payment', addPayment);
-router.get('/snowball', snowballOrder);
-router.get('/informal', getInformalDebts);
-router.post('/informal', createInformalDebt);
-router.post('/informal/:id/payment', addInformalPayment);
+router.get('/', protect, getDebts);
+router.post('/', protect, createDebt);
+router.get('/snowball', protect, snowballOrder);
+router.get('/informal', protect, getInformalDebts);
+router.post('/informal', protect, createInformalDebt);
+router.post('/informal/:id/payment', protect, addInformalPayment);
+router.put('/:id', protect, updateDebt);
+router.delete('/:id', protect, deleteDebt);
+router.post('/:id/payment', protect, addPayment);
 
 module.exports = router;

@@ -5,7 +5,7 @@ const { paginacao } = require('../utils/helpers');
 exports.listar = async (req, res, next) => {
   try {
     const { page, limit, skip } = paginacao(req.query);
-    const filtros = { userId: req.user._id };
+    const filtros = { userId: req.user.id };
 
     if (req.query.status) filtros.status = req.query.status;
 
@@ -34,7 +34,7 @@ exports.criar = async (req, res, next) => {
 
     const divida = await InformalDebt.create({
       ...req.body,
-      userId: req.user._id,
+      userId: req.user.id,
     });
 
     res.status(201).json({ success: true, data: divida });
@@ -47,7 +47,7 @@ exports.atualizar = async (req, res, next) => {
   try {
     let divida = await InformalDebt.findOne({
       _id: req.params.id,
-      userId: req.user._id,
+      userId: req.user.id,
     });
 
     if (!divida) {
@@ -69,7 +69,7 @@ exports.eliminar = async (req, res, next) => {
   try {
     const divida = await InformalDebt.findOne({
       _id: req.params.id,
-      userId: req.user._id,
+      userId: req.user.id,
     });
 
     if (!divida) {
@@ -88,7 +88,7 @@ exports.registarPagamento = async (req, res, next) => {
   try {
     const divida = await InformalDebt.findOne({
       _id: req.params.id,
-      userId: req.user._id,
+      userId: req.user.id,
     });
 
     if (!divida) {

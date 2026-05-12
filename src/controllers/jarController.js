@@ -2,13 +2,13 @@ const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const { validarFrascos } = require('../utils/validators');
 
-const JAR_KEYS = ['necessidades', 'liberdade', 'poupanca', 'educacao', 'lazer', 'doar'];
+const JAR_KEYS = ['necessities', 'freedom', 'savings', 'education', 'play', 'give'];
 
 exports.obterFrascos = async (req, res, next) => {
   try {
-    const utilizador = await User.findById(req.user._id);
+    const utilizador = await User.findById(req.user.id);
 
-    const transacoes = await Transaction.find({ userId: req.user._id });
+    const transacoes = await Transaction.find({ userId: req.user.id });
 
     const saldos = {};
     JAR_KEYS.forEach((jar) => {
@@ -58,7 +58,7 @@ exports.atualizarFrasco = async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Percentagem deve ser entre 0 e 100' });
     }
 
-    const utilizador = await User.findById(req.user._id);
+    const utilizador = await User.findById(req.user.id);
     const novasPercentagens = { ...utilizador.jarPercentages.toObject() };
     novasPercentagens[id] = percentage;
 
