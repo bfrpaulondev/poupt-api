@@ -1,4 +1,6 @@
 const Debt = require('../models/Debt');
+const { calcularBolaDeNeve } = require('../services/snowball');
+const { notifyDebtPaid } = require('../services/notificationGenerator');
 
 exports.getDebts = async (req, res) => {
   try {
@@ -124,6 +126,8 @@ exports.addPayment = async (req, res) => {
     debt.amountPaid += amount;
     debt.payments.push({ amount, notes });
 
+    const eraPago = debt.amountPaid >= debt.amount;
+
     if (debt.amountPaid >= debt.amount) {
       debt.status = 'pago';
       debt.amountPaid = debt.amount;
@@ -132,6 +136,11 @@ exports.addPayment = async (req, res) => {
     }
 
     await debt.save();
+
+    // Notificar quando divida e paga
+    if (debt.status === 'pago' && !eraPago) {
+      await notifyDebtPaid(req.user.id, debt);
+    }
 
     res.status(200).json({
       success: true,
@@ -178,6 +187,29 @@ exports.snowballOrder = async (req, res) => {
     res.status(200).json({
       success: true,
       data: { plan }
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
+
+exports.snowballDetailed = async (req, res) => {
+  try {
+    const { pagamentoExtra = 0 } = req.body;
+
+    const debts = await Debt.find({
+      userId: req.user.id,
+      status: { $ne: 'pago' }
+    });
+
+    const resultado = calcularBolaDeNeve(debts, pagamentoExtra);
+
+    res.status(200).json({
+      success: true,
+      data: resultado
     });
   } catch (err) {
     res.status(500).json({

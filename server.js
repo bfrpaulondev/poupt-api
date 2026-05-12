@@ -20,6 +20,7 @@ const investmentRoutes = require('./src/routes/investments');
 const reportRoutes = require('./src/routes/reports');
 const moedaRoutes = require('./src/routes/moedas');
 const notificationRoutes = require('./src/routes/notifications');
+const creditorRoutes = require('./src/routes/creditors');
 
 const app = express();
 
@@ -43,6 +44,7 @@ app.use('/api/investments', investmentRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/moedas', moedaRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/creditors', creditorRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() });

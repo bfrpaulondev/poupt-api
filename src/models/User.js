@@ -1,4 +1,7 @@
-const userSchema = new (require('mongoose')).Schema({
+const bcrypt = require('bcryptjs');
+const mongoose = require('mongoose');
+
+const userSchema = new mongoose.Schema({
   name: {
     type: String,
     required: [true, 'Nome e obrigatorio'],
@@ -106,6 +109,10 @@ const userSchema = new (require('mongoose')).Schema({
     type: Date,
     default: Date.now
   },
+  lastLoginDate: {
+    type: Date,
+    default: null
+  },
   onboardingComplete: {
     type: Boolean,
     default: false
@@ -115,6 +122,18 @@ const userSchema = new (require('mongoose')).Schema({
   toJSON: { virtuals: true },
   toObject: { virtuals: true }
 });
+
+// Hash da palavra-passe antes de guardar
+userSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) return next();
+  this.password = await bcrypt.hash(this.password, 12);
+  next();
+});
+
+// Comparar palavra-passe para login
+userSchema.methods.comparePassword = async function(candidatePassword) {
+  return await bcrypt.compare(candidatePassword, this.password);
+};
 
 userSchema.virtual('jarAllocations').get(function() {
   if (!this.income) return {};
@@ -128,4 +147,4 @@ userSchema.virtual('jarAllocations').get(function() {
   };
 });
 
-module.exports = require('mongoose').model('User', userSchema);
+module.exports = mongoose.model('User', userSchema);

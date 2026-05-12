@@ -1,6 +1,8 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const { detectarModo } = require('../services/modeDetector');
+const { notifyModeTransition, notifyStreakBroken, notifyDailyLogin } = require('../services/notificationGenerator');
 
 const signToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -32,6 +34,20 @@ const createSendToken = (user, statusCode, res) => {
   });
 };
 
+// Verificar se duas datas sao o mesmo dia
+const isSameDay = (d1, d2) => {
+  return d1.getFullYear() === d2.getFullYear() &&
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate();
+};
+
+// Verificar se a data e ontem
+const isYesterday = (date) => {
+  const ontem = new Date();
+  ontem.setDate(ontem.getDate() - 1);
+  return isSameDay(date, ontem);
+};
+
 exports.register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -48,7 +64,9 @@ exports.register = async (req, res) => {
       name,
       email,
       password,
-      poupMoedas: 50
+      poupMoedas: 50,
+      streak: 1,
+      lastLoginDate: new Date()
     });
 
     createSendToken(user, 201, res);
@@ -71,7 +89,7 @@ exports.login = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ email }).select('+password');
+    const user = await User.findOne({ email }).select('+password +lastLoginDate');
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -79,7 +97,7 @@ exports.login = async (req, res) => {
       });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.status(401).json({
         success: false,
@@ -87,9 +105,35 @@ exports.login = async (req, res) => {
       });
     }
 
-    user.lastCoachReset = new Date();
+    // Rastreamento de sequencia de logins
+    const agora = new Date();
+    const ultimoLogin = user.lastLoginDate;
+
+    if (!ultimoLogin) {
+      // Primeiro login
+      user.streak = 1;
+    } else if (isSameDay(ultimoLogin, agora)) {
+      // Ja fez login hoje - sem alteracao
+    } else if (isYesterday(ultimoLogin)) {
+      // Login consecutivo
+      user.streak += 1;
+    } else {
+      // Sequencia quebrada
+      if (user.streak > 1) {
+        await notifyStreakBroken(user._id);
+      }
+      user.streak = 1;
+    }
+
+    user.lastLoginDate = agora;
+    user.lastCoachReset = agora;
     user.dailyCoachMessages = 0;
     await user.save({ validateBeforeSave: false });
+
+    // Notificacao de boas-vindas (apenas uma vez por dia)
+    if (!ultimoLogin || !isSameDay(ultimoLogin, agora)) {
+      await notifyDailyLogin(user._id);
+    }
 
     createSendToken(user, 200, res);
   } catch (err) {
@@ -124,7 +168,9 @@ exports.googleAuth = async (req, res) => {
           email,
           googleId,
           password: googleId + process.env.JWT_SECRET,
-          poupMoedas: 50
+          poupMoedas: 50,
+          streak: 1,
+          lastLoginDate: new Date()
         });
       }
     }
@@ -219,6 +265,36 @@ exports.updateMode = async (req, res) => {
   }
 };
 
+exports.detectMode = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    const modoAntigo = user.financialMode;
+
+    const novoModo = await detectarModo(user._id, user.income);
+
+    if (novoModo !== modoAntigo) {
+      user.financialMode = novoModo;
+      await user.save({ validateBeforeSave: false });
+
+      await notifyModeTransition(user._id, modoAntigo, novoModo);
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        previousMode: modoAntigo,
+        financialMode: novoModo,
+        changed: novoModo !== modoAntigo
+      }
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
+
 exports.updateCoach = async (req, res) => {
   try {
     const { coachName, coachGender, coachPersonality } = req.body;
@@ -303,6 +379,99 @@ exports.deleteMe = async (req, res) => {
       success: true,
       message: 'Conta eliminada com sucesso'
     });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
+
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email e obrigatorio'
+      });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      // Nao revelar que o utilizador nao existe
+      return res.status(200).json({
+        success: true,
+        message: 'Se o email existir, receberas instrucoes para redefinir a palavra-passe'
+      });
+    }
+
+    // Gerar token de reposicao
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    user.resetPasswordToken = crypto
+      .createHash('sha256')
+      .update(resetToken)
+      .digest('hex');
+    user.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 minutos
+
+    await user.save({ validateBeforeSave: false });
+
+    // Em producao, enviaria email com o token
+    res.status(200).json({
+      success: true,
+      message: 'Se o email existir, receberas instrucoes para redefinir a palavra-passe',
+      resetToken // Apenas para desenvolvimento
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    if (!token || !password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Token e nova palavra-passe sao obrigatorios'
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: 'A palavra-passe deve ter pelo menos 6 caracteres'
+      });
+    }
+
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(token)
+      .digest('hex');
+
+    const user = await User.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpire: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        error: 'Token invalido ou expirado'
+      });
+    }
+
+    user.password = password;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+    await user.save();
+
+    createSendToken(user, 200, res);
   } catch (err) {
     res.status(500).json({
       success: false,
