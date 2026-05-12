@@ -3,7 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
-const connectDB = require('./src/config/db');
+const { connectDB, reconnectDB, isDBConnected } = require('./src/config/db');
 const corsConfig = require('./src/config/cors');
 const rateLimiter = require('./src/middleware/rateLimiter');
 const errorHandler = require('./src/middleware/errorHandler');
@@ -45,7 +45,12 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/creditors', creditorRoutes);
 
 app.get('/api/health', (req, res) => {
-  res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() });
+  res.json({
+    success: true,
+    status: 'ok',
+    db: isDBConnected() ? 'connected' : 'disconnected',
+    timestamp: new Date().toISOString()
+  });
 });
 
 app.use(errorHandler);
@@ -53,15 +58,16 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 
 const iniciarServidor = async () => {
-  try {
-    await connectDB();
-    app.listen(PORT, () => {
-      console.log(`Servidor PoupPT a correr na porta ${PORT}`);
-    });
-  } catch (err) {
-    console.error('Falha ao iniciar servidor:', err.message);
-    process.exit(1);
+  const connected = await connectDB();
+
+  if (!connected) {
+    console.warn('MongoDB nao disponivel. Servidor a iniciar sem DB. A tentar reconectar...');
+    reconnectDB();
   }
+
+  app.listen(PORT, () => {
+    console.log(`Servidor PoupPT a correr na porta ${PORT}`);
+  });
 };
 
 iniciarServidor();
