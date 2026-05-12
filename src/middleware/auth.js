@@ -1,36 +1,68 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
-const proteger = async (req, res, next) => {
-  let token;
-
-  if (req.cookies && req.cookies.poupt_token) {
-    token = req.cookies.poupt_token;
-  }
-
-  if (!token) {
-    return res.status(401).json({
-      success: false,
-      error: 'Nao autorizado - sem token',
-    });
-  }
-
+exports.protect = async (req, res, next) => {
   try {
+    let token;
+
+    if (req.cookies.token && req.cookies.token !== 'none') {
+      token = req.cookies.token;
+    } else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+      token = req.headers.authorization.split(' ')[1];
+    }
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: 'Nao autenticado. Faz login para continuar.'
+      });
+    }
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = await User.findById(decoded.id);
+
     if (!req.user) {
       return res.status(401).json({
         success: false,
-        error: 'Utilizador nao encontrado',
+        error: 'Utilizador nao encontrado'
       });
     }
+
     next();
-  } catch (erro) {
+  } catch (err) {
     return res.status(401).json({
       success: false,
-      error: 'Token invalido',
+      error: 'Sessao invalida. Faz login novamente.'
     });
   }
 };
 
-module.exports = proteger;
+exports.optionalAuth = async (req, res, next) => {
+  try {
+    let token;
+
+    if (req.cookies.token && req.cookies.token !== 'none') {
+      token = req.cookies.token;
+    } else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+      token = req.headers.authorization.split(' ')[1];
+    }
+
+    if (token) {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      req.user = await User.findById(decoded.id);
+    }
+  } catch (err) {
+    // Continue without auth
+  }
+  next();
+};
+
+exports.premiumOnly = (req, res, next) => {
+  if (req.user && req.user.plan !== 'premium') {
+    return res.status(403).json({
+      success: false,
+      error: 'Funcionalidade exclusiva Premium. Atualiza a tua conta.'
+    });
+  }
+  next();
+};

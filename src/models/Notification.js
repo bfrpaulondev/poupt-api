@@ -1,37 +1,51 @@
 const mongoose = require('mongoose');
 
-const NotificationSchema = new mongoose.Schema({
+const notificationSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
+    index: true
+  },
+  type: {
+    type: String,
+    enum: [
+      'divida_vencida', 'pagamento_proximo', 'meta_atingida', 'transicao_modo',
+      'streak_quebrado', 'conquista', 'lembrete_poupanca', 'divida_informal',
+      'relatorio_semanal', 'dica_coach', 'sistema'
+    ],
+    required: true
   },
   title: {
     type: String,
     required: true,
+    trim: true
   },
   message: {
     type: String,
-    required: true,
+    required: true
   },
-  type: {
-    type: String,
-    enum: ['alerta', 'lembrete', 'celebracao', 'sistema'],
-    default: 'sistema',
-  },
-  read: {
+  isRead: {
     type: Boolean,
-    default: false,
+    default: false
   },
-  link: {
+  actionUrl: {
     type: String,
+    default: ''
   },
-  createdAt: {
-    type: Date,
-    default: Date.now,
+  priority: {
+    type: String,
+    enum: ['baixa', 'media', 'alta', 'critica'],
+    default: 'media'
   },
+  relatedId: {
+    type: mongoose.Schema.Types.ObjectId,
+    default: null
+  }
+}, {
+  timestamps: true
 });
 
-NotificationSchema.index({ userId: 1, read: 1, createdAt: -1 });
+notificationSchema.index({ userId: 1, isRead: 1, createdAt: -1 });
 
-module.exports = mongoose.model('Notification', NotificationSchema);
+module.exports = mongoose.model('Notification', notificationSchema);

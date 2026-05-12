@@ -1,98 +1,185 @@
 const Transaction = require('../models/Transaction');
-const { validarTransacao } = require('../utils/validators');
-const { paginacao } = require('../utils/helpers');
+const User = require('../models/User');
 
-exports.listar = async (req, res, next) => {
+exports.getTransactions = async (req, res) => {
   try {
-    const { page, limit, skip } = paginacao(req.query);
-    const filtros = { userId: req.user._id };
+    const {
+      page = 1,
+      limit = 20,
+      type,
+      category,
+      startDate,
+      endDate,
+      jar,
+      sort = '-date'
+    } = req.query;
 
-    if (req.query.type) filtros.type = req.query.type;
-    if (req.query.category) filtros.category = req.query.category;
-    if (req.query.jar) filtros.jar = req.query.jar;
+    const query = { userId: req.user.id };
 
-    if (req.query.dataInicio || req.query.dataFim) {
-      filtros.date = {};
-      if (req.query.dataInicio) filtros.date.$gte = new Date(req.query.dataInicio);
-      if (req.query.dataFim) filtros.date.$lte = new Date(req.query.dataFim);
+    if (type) query.type = type;
+    if (category) query.category = category;
+    if (jar) query.jar = jar;
+    if (startDate || endDate) {
+      query.date = {};
+      if (startDate) query.date.$gte = new Date(startDate);
+      if (endDate) query.date.$lte = new Date(endDate);
     }
 
-    const total = await Transaction.countDocuments(filtros);
-    const transacoes = await Transaction.find(filtros)
-      .sort({ date: -1 })
-      .skip(skip)
-      .limit(limit);
+    const total = await Transaction.countDocuments(query);
+    const transactions = await Transaction.find(query)
+      .sort(sort)
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit));
 
-    res.json({
+    res.status(200).json({
       success: true,
-      data: transacoes,
-      paginacao: {
-        page,
-        limit,
+      data: { transactions },
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
         total,
-        paginas: Math.ceil(total / limit),
-      },
+        pages: Math.ceil(total / limit)
+      }
     });
-  } catch (erro) {
-    next(erro);
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
   }
 };
 
-exports.criar = async (req, res, next) => {
+exports.createTransaction = async (req, res) => {
   try {
-    const erros = validarTransacao(req.body);
-    if (erros.length > 0) {
-      return res.status(400).json({ success: false, error: erros.join(', ') });
-    }
-
-    const transacao = await Transaction.create({
+    const transaction = await Transaction.create({
       ...req.body,
-      userId: req.user._id,
+      userId: req.user.id
     });
 
-    res.status(201).json({ success: true, data: transacao });
-  } catch (erro) {
-    next(erro);
+    const user = await User.findById(req.user.id);
+    user.xp = (user.xp || 0) + 5;
+    user.streak = user.streak || 0;
+    await user.save({ validateBeforeSave: false });
+
+    res.status(201).json({
+      success: true,
+      data: { transaction }
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err.message
+    });
   }
 };
 
-exports.atualizar = async (req, res, next) => {
+exports.updateTransaction = async (req, res) => {
   try {
-    let transacao = await Transaction.findOne({
-      _id: req.params.id,
-      userId: req.user._id,
-    });
+    const transaction = await Transaction.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user.id },
+      req.body,
+      { new: true, runValidators: true }
+    );
 
-    if (!transacao) {
-      return res.status(404).json({ success: false, error: 'Transacao nao encontrada' });
+    if (!transaction) {
+      return res.status(404).json({
+        success: false,
+        error: 'Transacao nao encontrada'
+      });
     }
 
-    transacao = await Transaction.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
+    res.status(200).json({
+      success: true,
+      data: { transaction }
     });
-
-    res.json({ success: true, data: transacao });
-  } catch (erro) {
-    next(erro);
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err.message
+    });
   }
 };
 
-exports.eliminar = async (req, res, next) => {
+exports.deleteTransaction = async (req, res) => {
   try {
-    const transacao = await Transaction.findOne({
+    const transaction = await Transaction.findOneAndDelete({
       _id: req.params.id,
-      userId: req.user._id,
+      userId: req.user.id
     });
 
-    if (!transacao) {
-      return res.status(404).json({ success: false, error: 'Transacao nao encontrada' });
+    if (!transaction) {
+      return res.status(404).json({
+        success: false,
+        error: 'Transacao nao encontrada'
+      });
     }
 
-    await transacao.deleteOne();
+    res.status(200).json({
+      success: true,
+      message: 'Transacao eliminada'
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
 
-    res.json({ success: true, data: {} });
-  } catch (erro) {
-    next(erro);
+exports.getSummary = async (req, res) => {
+  try {
+    const { month, year } = req.query;
+    const now = new Date();
+    const targetMonth = parseInt(month) || now.getMonth() + 1;
+    const targetYear = parseInt(year) || now.getFullYear();
+
+    const startDate = new Date(targetYear, targetMonth - 1, 1);
+    const endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59);
+
+    const transactions = await Transaction.find({
+      userId: req.user.id,
+      date: { $gte: startDate, $lte: endDate }
+    });
+
+    const income = transactions
+      .filter(t => t.type === 'receita')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const expenses = transactions
+      .filter(t => t.type === 'despesa')
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const byCategory = {};
+    transactions.forEach(t => {
+      if (!byCategory[t.category]) {
+        byCategory[t.category] = { receita: 0, despesa: 0 };
+      }
+      byCategory[t.category][t.type] += t.amount;
+    });
+
+    const byJar = {};
+    transactions.filter(t => t.jar).forEach(t => {
+      if (!byJar[t.jar]) byJar[t.jar] = 0;
+      byJar[t.jar] += t.amount;
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        month: targetMonth,
+        year: targetYear,
+        income: +income.toFixed(2),
+        expenses: +expenses.toFixed(2),
+        balance: +(income - expenses).toFixed(2),
+        byCategory,
+        byJar,
+        transactionCount: transactions.length
+      }
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
   }
 };

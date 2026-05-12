@@ -1,112 +1,107 @@
 const User = require('../models/User');
-const PoupMoeda = require('../models/PoupMoeda');
 
-exports.obterSaldo = async (req, res, next) => {
+exports.getBalance = async (req, res) => {
   try {
-    const utilizador = await User.findById(req.user._id);
-
-    let contaMoedas = await PoupMoeda.findOne({ userId: req.user._id });
-    if (!contaMoedas) {
-      contaMoedas = await PoupMoeda.create({
-        userId: req.user._id,
-        balance: utilizador.poupMoedas,
-      });
-    }
-
-    res.json({
+    const user = await User.findById(req.user.id);
+    res.status(200).json({
       success: true,
-      data: {
-        saldo: utilizador.poupMoedas,
-        historico: contaMoedas.transactions.slice(-20),
-      },
+      data: { balance: user.poupMoedas }
     });
-  } catch (erro) {
-    next(erro);
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
   }
 };
 
-exports.ganhar = async (req, res, next) => {
+exports.earnMoedas = async (req, res) => {
   try {
-    const { reason } = req.body;
-    const montante = 50;
+    const { action, amount } = req.body;
 
-    const utilizador = await User.findById(req.user._id);
-    utilizador.poupMoedas += montante;
-    await utilizador.save({ validateBeforeSave: false });
+    const validActions = {
+      watch_ad: 50,
+      daily_login: 10,
+      add_transaction: 5,
+      complete_challenge: 100,
+      streak_bonus: 30,
+      share_achievement: 20
+    };
 
-    let contaMoedas = await PoupMoeda.findOne({ userId: req.user._id });
-    if (!contaMoedas) {
-      contaMoedas = await PoupMoeda.create({
-        userId: req.user._id,
-        balance: utilizador.poupMoedas,
-      });
-    }
+    const earned = amount || validActions[action] || 0;
 
-    contaMoedas.transactions.push({
-      type: 'ganho',
-      amount: montante,
-      reason: reason || 'Visualizacao de anuncio',
-    });
-    contaMoedas.balance = utilizador.poupMoedas;
-    await contaMoedas.save();
-
-    res.json({
-      success: true,
-      data: {
-        saldo: utilizador.poupMoedas,
-        ganho: montante,
-      },
-    });
-  } catch (erro) {
-    next(erro);
-  }
-};
-
-exports.gastar = async (req, res, next) => {
-  try {
-    const { amount, reason } = req.body;
-
-    if (!amount || amount <= 0) {
-      return res.status(400).json({ success: false, error: 'Montante invalido' });
-    }
-
-    const utilizador = await User.findById(req.user._id);
-
-    if (utilizador.poupMoedas < amount) {
+    if (earned <= 0) {
       return res.status(400).json({
         success: false,
-        error: 'Saldo insuficiente de PoupMoedas',
-        saldoAtual: utilizador.poupMoedas,
+        error: 'Acao invalida'
       });
     }
 
-    utilizador.poupMoedas -= amount;
-    await utilizador.save({ validateBeforeSave: false });
+    const user = await User.findById(req.user.id);
+    user.poupMoedas += earned;
+    user.xp = (user.xp || 0) + Math.floor(earned / 5);
+    await user.save({ validateBeforeSave: false });
 
-    let contaMoedas = await PoupMoeda.findOne({ userId: req.user._id });
-    if (!contaMoedas) {
-      contaMoedas = await PoupMoeda.create({
-        userId: req.user._id,
-        balance: utilizador.poupMoedas,
-      });
-    }
-
-    contaMoedas.transactions.push({
-      type: 'gasto',
-      amount,
-      reason: reason || 'Utilizacao de funcionalidade',
-    });
-    contaMoedas.balance = utilizador.poupMoedas;
-    await contaMoedas.save();
-
-    res.json({
+    res.status(200).json({
       success: true,
       data: {
-        saldo: utilizador.poupMoedas,
-        gasto: amount,
-      },
+        balance: user.poupMoedas,
+        earned
+      }
     });
-  } catch (erro) {
-    next(erro);
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
+
+exports.spendMoedas = async (req, res) => {
+  try {
+    const { feature } = req.body;
+
+    const prices = {
+      coach_question: 100,
+      ocr_scan: 50,
+      weekly_report: 30,
+      creditor_template: 10,
+      premium_theme: 200
+    };
+
+    const cost = prices[feature];
+    if (!cost) {
+      return res.status(400).json({
+        success: false,
+        error: 'Funcionalidade invalida'
+      });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (user.poupMoedas < cost) {
+      return res.status(400).json({
+        success: false,
+        error: 'PoupMoedas insuficientes',
+        balance: user.poupMoedas,
+        cost
+      });
+    }
+
+    user.poupMoedas -= cost;
+    await user.save({ validateBeforeSave: false });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        balance: user.poupMoedas,
+        spent: cost,
+        feature
+      }
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
   }
 };

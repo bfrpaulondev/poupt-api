@@ -1,85 +1,123 @@
 const Goal = require('../models/Goal');
-const { validarObjetivo } = require('../utils/validators');
-const { paginacao } = require('../utils/helpers');
 
-exports.listar = async (req, res, next) => {
+exports.getGoals = async (req, res) => {
   try {
-    const { page, limit, skip } = paginacao(req.query);
-    const filtros = { userId: req.user._id };
-
-    if (req.query.type) filtros.type = req.query.type;
-
-    const total = await Goal.countDocuments(filtros);
-    const objetivos = await Goal.find(filtros)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    res.json({
+    const goals = await Goal.find({ userId: req.user.id }).sort('-createdAt');
+    res.status(200).json({
       success: true,
-      data: objetivos,
-      paginacao: { page, limit, total, paginas: Math.ceil(total / limit) },
+      data: { goals }
     });
-  } catch (erro) {
-    next(erro);
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
   }
 };
 
-exports.criar = async (req, res, next) => {
+exports.createGoal = async (req, res) => {
   try {
-    const erros = validarObjetivo(req.body);
-    if (erros.length > 0) {
-      return res.status(400).json({ success: false, error: erros.join(', ') });
-    }
-
-    const objetivo = await Goal.create({
+    const goal = await Goal.create({
       ...req.body,
-      userId: req.user._id,
+      userId: req.user.id
     });
 
-    res.status(201).json({ success: true, data: objetivo });
-  } catch (erro) {
-    next(erro);
+    res.status(201).json({
+      success: true,
+      data: { goal }
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err.message
+    });
   }
 };
 
-exports.atualizar = async (req, res, next) => {
+exports.updateGoal = async (req, res) => {
   try {
-    let objetivo = await Goal.findOne({
-      _id: req.params.id,
-      userId: req.user._id,
-    });
+    const goal = await Goal.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user.id },
+      req.body,
+      { new: true, runValidators: true }
+    );
 
-    if (!objetivo) {
-      return res.status(404).json({ success: false, error: 'Objetivo nao encontrado' });
+    if (!goal) {
+      return res.status(404).json({
+        success: false,
+        error: 'Meta nao encontrada'
+      });
     }
 
-    objetivo = await Goal.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
+    res.status(200).json({
+      success: true,
+      data: { goal }
     });
-
-    res.json({ success: true, data: objetivo });
-  } catch (erro) {
-    next(erro);
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err.message
+    });
   }
 };
 
-exports.eliminar = async (req, res, next) => {
+exports.deleteGoal = async (req, res) => {
   try {
-    const objetivo = await Goal.findOne({
+    const goal = await Goal.findOneAndDelete({
       _id: req.params.id,
-      userId: req.user._id,
+      userId: req.user.id
     });
 
-    if (!objetivo) {
-      return res.status(404).json({ success: false, error: 'Objetivo nao encontrado' });
+    if (!goal) {
+      return res.status(404).json({
+        success: false,
+        error: 'Meta nao encontrada'
+      });
     }
 
-    await objetivo.deleteOne();
+    res.status(200).json({
+      success: true,
+      message: 'Meta eliminada'
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
 
-    res.json({ success: true, data: {} });
-  } catch (erro) {
-    next(erro);
+exports.updateGoalProgress = async (req, res) => {
+  try {
+    const { amount } = req.body;
+    const goal = await Goal.findOne({
+      _id: req.params.id,
+      userId: req.user.id
+    });
+
+    if (!goal) {
+      return res.status(404).json({
+        success: false,
+        error: 'Meta nao encontrada'
+      });
+    }
+
+    goal.currentAmount += amount;
+    if (goal.currentAmount >= goal.targetAmount) {
+      goal.isCompleted = true;
+      goal.currentAmount = goal.targetAmount;
+    }
+
+    await goal.save();
+
+    res.status(200).json({
+      success: true,
+      data: { goal }
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err.message
+    });
   }
 };

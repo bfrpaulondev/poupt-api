@@ -1,86 +1,267 @@
 const Debt = require('../models/Debt');
-const { validarDivida } = require('../utils/validators');
-const { paginacao } = require('../utils/helpers');
 
-exports.listar = async (req, res, next) => {
+exports.getDebts = async (req, res) => {
   try {
-    const { page, limit, skip } = paginacao(req.query);
-    const filtros = { userId: req.user._id };
+    const { type, status, sort = 'snowballPriority' } = req.query;
+    const query = { userId: req.user.id };
+    if (type) query.type = type;
+    if (status) query.status = status;
 
-    if (req.query.status) filtros.status = req.query.status;
-    if (req.query.type) filtros.type = req.query.type;
+    const debts = await Debt.find(query).sort(sort);
 
-    const total = await Debt.countDocuments(filtros);
-    const dividas = await Debt.find(filtros)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+    const totalOwed = debts.reduce((sum, d) => sum + d.remainingAmount, 0);
+    const totalPaid = debts.reduce((sum, d) => sum + d.amountPaid, 0);
+    const overdueCount = debts.filter(d => d.daysOverdue > 0).length;
 
-    res.json({
+    res.status(200).json({
       success: true,
-      data: dividas,
-      paginacao: { page, limit, total, paginas: Math.ceil(total / limit) },
+      data: {
+        debts,
+        summary: {
+          totalDebts: debts.length,
+          totalOwed: +totalOwed.toFixed(2),
+          totalPaid: +totalPaid.toFixed(2),
+          overdueCount
+        }
+      }
     });
-  } catch (erro) {
-    next(erro);
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
   }
 };
 
-exports.criar = async (req, res, next) => {
+exports.createDebt = async (req, res) => {
   try {
-    const erros = validarDivida(req.body);
-    if (erros.length > 0) {
-      return res.status(400).json({ success: false, error: erros.join(', ') });
-    }
-
-    const divida = await Debt.create({
+    const debt = await Debt.create({
       ...req.body,
-      userId: req.user._id,
+      userId: req.user.id
     });
 
-    res.status(201).json({ success: true, data: divida });
-  } catch (erro) {
-    next(erro);
+    res.status(201).json({
+      success: true,
+      data: { debt }
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err.message
+    });
   }
 };
 
-exports.atualizar = async (req, res, next) => {
+exports.updateDebt = async (req, res) => {
   try {
-    let divida = await Debt.findOne({
-      _id: req.params.id,
-      userId: req.user._id,
-    });
+    const debt = await Debt.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user.id },
+      req.body,
+      { new: true, runValidators: true }
+    );
 
-    if (!divida) {
-      return res.status(404).json({ success: false, error: 'Divida nao encontrada' });
+    if (!debt) {
+      return res.status(404).json({
+        success: false,
+        error: 'Divida nao encontrada'
+      });
     }
 
-    divida = await Debt.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
+    res.status(200).json({
+      success: true,
+      data: { debt }
     });
-
-    res.json({ success: true, data: divida });
-  } catch (erro) {
-    next(erro);
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err.message
+    });
   }
 };
 
-exports.eliminar = async (req, res, next) => {
+exports.deleteDebt = async (req, res) => {
   try {
-    const divida = await Debt.findOne({
+    const debt = await Debt.findOneAndDelete({
       _id: req.params.id,
-      userId: req.user._id,
+      userId: req.user.id
     });
 
-    if (!divida) {
-      return res.status(404).json({ success: false, error: 'Divida nao encontrada' });
+    if (!debt) {
+      return res.status(404).json({
+        success: false,
+        error: 'Divida nao encontrada'
+      });
     }
 
-    await divida.deleteOne();
+    res.status(200).json({
+      success: true,
+      message: 'Divida eliminada'
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
 
-    res.json({ success: true, data: {} });
-  } catch (erro) {
-    next(erro);
+exports.addPayment = async (req, res) => {
+  try {
+    const { amount, notes } = req.body;
+
+    const debt = await Debt.findOne({
+      _id: req.params.id,
+      userId: req.user.id
+    });
+
+    if (!debt) {
+      return res.status(404).json({
+        success: false,
+        error: 'Divida nao encontrada'
+      });
+    }
+
+    debt.amountPaid += amount;
+    debt.payments.push({ amount, notes });
+
+    if (debt.amountPaid >= debt.amount) {
+      debt.status = 'pago';
+      debt.amountPaid = debt.amount;
+    } else {
+      debt.status = 'parcial';
+    }
+
+    await debt.save();
+
+    res.status(200).json({
+      success: true,
+      data: { debt }
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
+
+exports.snowballOrder = async (req, res) => {
+  try {
+    const debts = await Debt.find({
+      userId: req.user.id,
+      status: { $ne: 'pago' }
+    });
+
+    const sorted = debts.sort((a, b) => a.amount - b.amount);
+
+    let remainingBudget = req.body.extraBudget || 0;
+    const plan = sorted.map((debt, index) => {
+      const minPayment = debt.minimumPayment || 0;
+      const extra = index === 0 ? remainingBudget : 0;
+      const totalPayment = minPayment + extra;
+
+      return {
+        debt: debt._id,
+        creditorName: debt.creditorName,
+        totalAmount: debt.amount,
+        remaining: debt.remainingAmount,
+        minimumPayment: minPayment,
+        extraPayment: extra,
+        totalPayment,
+        monthsToPayoff: minPayment > 0
+          ? Math.ceil((debt.remainingAmount - extra) / minPayment)
+          : 0,
+        priority: index + 1
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      data: { plan }
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
+
+exports.getInformalDebts = async (req, res) => {
+  try {
+    const debts = await Debt.find({
+      userId: req.user.id,
+      type: 'informal'
+    }).sort('-createdAt');
+
+    res.status(200).json({
+      success: true,
+      data: { debts }
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
+
+exports.createInformalDebt = async (req, res) => {
+  try {
+    const debt = await Debt.create({
+      ...req.body,
+      userId: req.user.id,
+      type: 'informal'
+    });
+
+    res.status(201).json({
+      success: true,
+      data: { debt }
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
+
+exports.addInformalPayment = async (req, res) => {
+  try {
+    const { amount, notes } = req.body;
+
+    const debt = await Debt.findOne({
+      _id: req.params.id,
+      userId: req.user.id,
+      type: 'informal'
+    });
+
+    if (!debt) {
+      return res.status(404).json({
+        success: false,
+        error: 'Divida informal nao encontrada'
+      });
+    }
+
+    debt.amountPaid += amount;
+    debt.payments.push({ amount, notes });
+
+    if (debt.amountPaid >= debt.amount) {
+      debt.status = 'pago';
+    } else {
+      debt.status = 'parcial';
+    }
+
+    await debt.save();
+
+    res.status(200).json({
+      success: true,
+      data: { debt }
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err.message
+    });
   }
 };

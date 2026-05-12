@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { enviarMensagem, obterHistorico } = require('../controllers/coachController');
-const proteger = require('../middleware/auth');
+const { chat, getHistory, clearHistory } = require('../controllers/coachController');
 
-router.post('/chat', proteger, enviarMensagem);
-router.get('/history', proteger, obterHistorico);
+router.post('/chat', chat);
+router.get('/history', getHistory);
+router.delete('/history', clearHistory);
 
 module.exports = router;

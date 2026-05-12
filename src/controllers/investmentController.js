@@ -1,85 +1,101 @@
 const Investment = require('../models/Investment');
-const { validarInvestimento } = require('../utils/validators');
-const { paginacao } = require('../utils/helpers');
 
-exports.listar = async (req, res, next) => {
+exports.getInvestments = async (req, res) => {
   try {
-    const { page, limit, skip } = paginacao(req.query);
-    const filtros = { userId: req.user._id };
+    const investments = await Investment.find({ userId: req.user.id }).sort('-createdAt');
 
-    if (req.query.type) filtros.type = req.query.type;
+    const totalInvested = investments.reduce((sum, i) => sum + i.totalInvested, 0);
+    const currentValue = investments.reduce((sum, i) => sum + i.currentValue, 0);
+    const totalDividends = investments.reduce((sum, i) => sum + i.dividends, 0);
 
-    const total = await Investment.countDocuments(filtros);
-    const investimentos = await Investment.find(filtros)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    res.json({
+    res.status(200).json({
       success: true,
-      data: investimentos,
-      paginacao: { page, limit, total, paginas: Math.ceil(total / limit) },
+      data: {
+        investments,
+        portfolio: {
+          totalInvested: +totalInvested.toFixed(2),
+          currentValue: +currentValue.toFixed(2),
+          totalProfitLoss: +(currentValue - totalInvested).toFixed(2),
+          totalDividends: +totalDividends.toFixed(2)
+        }
+      }
     });
-  } catch (erro) {
-    next(erro);
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
   }
 };
 
-exports.criar = async (req, res, next) => {
+exports.createInvestment = async (req, res) => {
   try {
-    const erros = validarInvestimento(req.body);
-    if (erros.length > 0) {
-      return res.status(400).json({ success: false, error: erros.join(', ') });
-    }
-
-    const investimento = await Investment.create({
+    const investment = await Investment.create({
       ...req.body,
-      userId: req.user._id,
+      userId: req.user.id
     });
 
-    res.status(201).json({ success: true, data: investimento });
-  } catch (erro) {
-    next(erro);
+    res.status(201).json({
+      success: true,
+      data: { investment }
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err.message
+    });
   }
 };
 
-exports.atualizar = async (req, res, next) => {
+exports.updateInvestment = async (req, res) => {
   try {
-    let investimento = await Investment.findOne({
-      _id: req.params.id,
-      userId: req.user._id,
-    });
+    const investment = await Investment.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user.id },
+      req.body,
+      { new: true, runValidators: true }
+    );
 
-    if (!investimento) {
-      return res.status(404).json({ success: false, error: 'Investimento nao encontrado' });
+    if (!investment) {
+      return res.status(404).json({
+        success: false,
+        error: 'Investimento nao encontrado'
+      });
     }
 
-    investimento = await Investment.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
+    res.status(200).json({
+      success: true,
+      data: { investment }
     });
-
-    res.json({ success: true, data: investimento });
-  } catch (erro) {
-    next(erro);
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err.message
+    });
   }
 };
 
-exports.eliminar = async (req, res, next) => {
+exports.deleteInvestment = async (req, res) => {
   try {
-    const investimento = await Investment.findOne({
+    const investment = await Investment.findOneAndDelete({
       _id: req.params.id,
-      userId: req.user._id,
+      userId: req.user.id
     });
 
-    if (!investimento) {
-      return res.status(404).json({ success: false, error: 'Investimento nao encontrado' });
+    if (!investment) {
+      return res.status(404).json({
+        success: false,
+        error: 'Investimento nao encontrado'
+      });
     }
 
-    await investimento.deleteOne();
-
-    res.json({ success: true, data: {} });
-  } catch (erro) {
-    next(erro);
+    res.status(200).json({
+      success: true,
+      message: 'Investimento eliminado'
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
   }
 };

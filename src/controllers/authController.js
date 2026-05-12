@@ -1,162 +1,312 @@
 const User = require('../models/User');
-const { validarRegisto, validarLogin } = require('../utils/validators');
-const { gerarToken, enviarTokenCookie } = require('../utils/helpers');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 
-exports.registar = async (req, res, next) => {
+const signToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRES_IN
+  });
+};
+
+const createSendToken = (user, statusCode, res) => {
+  const token = signToken(user._id);
+
+  const cookieOptions = {
+    expires: new Date(
+      Date.now() + 7 * 24 * 60 * 60 * 1000
+    ),
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    path: '/'
+  };
+
+  res.cookie('token', token, cookieOptions);
+
+  user.password = undefined;
+
+  res.status(statusCode).json({
+    success: true,
+    token,
+    data: { user }
+  });
+};
+
+exports.register = async (req, res) => {
   try {
-    const erros = validarRegisto(req.body);
-    if (erros.length > 0) {
-      return res.status(400).json({ success: false, error: erros.join(', ') });
-    }
-
     const { name, email, password } = req.body;
 
-    const utilizadorExistente = await User.findOne({ email });
-    if (utilizadorExistente) {
-      return res.status(400).json({ success: false, error: 'Ja existe uma conta com este email' });
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        error: 'Este email ja esta registado'
+      });
     }
 
-    const utilizador = await User.create({ name, email, password });
-
-    const token = gerarToken(utilizador._id);
-    enviarTokenCookie(res, token);
-
-    res.status(201).json({
-      success: true,
-      data: {
-        id: utilizador._id,
-        name: utilizador.name,
-        email: utilizador.email,
-        poupMoedas: utilizador.poupMoedas,
-        plan: utilizador.plan,
-      },
+    const user = await User.create({
+      name,
+      email,
+      password,
+      poupMoedas: 50
     });
-  } catch (erro) {
-    next(erro);
+
+    createSendToken(user, 201, res);
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err.message
+    });
   }
 };
 
-exports.login = async (req, res, next) => {
+exports.login = async (req, res) => {
   try {
-    const erros = validarLogin(req.body);
-    if (erros.length > 0) {
-      return res.status(400).json({ success: false, error: erros.join(', ') });
-    }
-
     const { email, password } = req.body;
 
-    const utilizador = await User.findOne({ email }).select('+password');
-    if (!utilizador) {
-      return res.status(401).json({ success: false, error: 'Credenciais invalidas' });
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email e palavra-passe sao obrigatorios'
+      });
     }
 
-    const passwordCorreta = await utilizador.matchPassword(password);
-    if (!passwordCorreta) {
-      return res.status(401).json({ success: false, error: 'Credenciais invalidas' });
+    const user = await User.findOne({ email }).select('+password');
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Credenciais invalidas'
+      });
     }
 
-    utilizador.lastLogin = new Date();
-    await utilizador.save({ validateBeforeSave: false });
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        error: 'Credenciais invalidas'
+      });
+    }
 
-    const token = gerarToken(utilizador._id);
-    enviarTokenCookie(res, token);
+    user.lastCoachReset = new Date();
+    user.dailyCoachMessages = 0;
+    await user.save({ validateBeforeSave: false });
 
-    res.json({
-      success: true,
-      data: {
-        id: utilizador._id,
-        name: utilizador.name,
-        email: utilizador.email,
-        poupMoedas: utilizador.poupMoedas,
-        plan: utilizador.plan,
-      },
+    createSendToken(user, 200, res);
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
     });
-  } catch (erro) {
-    next(erro);
   }
 };
 
-exports.googleAuth = async (req, res, next) => {
+exports.googleAuth = async (req, res) => {
   try {
-    const { token: googleToken } = req.body;
+    const { name, email, googleId } = req.body;
 
-    if (!googleToken) {
-      return res.status(400).json({ success: false, error: 'Token do Google obrigatorio' });
-    }
-
-    const { OAuth2Client } = require('google-auth-library');
-    const client = new OAuth2Client();
-
-    let payload;
-    try {
-      const ticket = await client.verifyIdToken({
-        idToken: googleToken,
+    if (!email || !googleId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Dados do Google incompletos'
       });
-      payload = ticket.getPayload();
-    } catch (erro) {
-      return res.status(401).json({ success: false, error: 'Token do Google invalido' });
     }
 
-    const { sub: googleId, email, name, picture } = payload;
+    let user = await User.findOne({ googleId });
 
-    let utilizador = await User.findOne({ googleId });
-
-    if (!utilizador) {
-      utilizador = await User.findOne({ email });
-      if (utilizador) {
-        utilizador.googleId = googleId;
-        utilizador.avatar = picture || utilizador.avatar;
-        await utilizador.save({ validateBeforeSave: false });
+    if (!user) {
+      user = await User.findOne({ email });
+      if (user) {
+        user.googleId = googleId;
+        await user.save({ validateBeforeSave: false });
       } else {
-        utilizador = await User.create({
-          name,
+        user = await User.create({
+          name: name || email.split('@')[0],
           email,
           googleId,
-          avatar: picture || '',
           password: googleId + process.env.JWT_SECRET,
+          poupMoedas: 50
         });
       }
     }
 
-    utilizador.lastLogin = new Date();
-    await utilizador.save({ validateBeforeSave: false });
-
-    const jwtToken = gerarToken(utilizador._id);
-    enviarTokenCookie(res, jwtToken);
-
-    res.json({
-      success: true,
-      data: {
-        id: utilizador._id,
-        name: utilizador.name,
-        email: utilizador.email,
-        poupMoedas: utilizador.poupMoedas,
-        plan: utilizador.plan,
-      },
+    createSendToken(user, 200, res);
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
     });
-  } catch (erro) {
-    next(erro);
   }
 };
 
 exports.logout = (req, res) => {
-  res.cookie('poupt_token', 'none', {
+  res.cookie('token', 'none', {
     expires: new Date(Date.now() + 10 * 1000),
-    httpOnly: true,
+    httpOnly: true
   });
 
-  res.json({ success: true, data: {} });
+  res.status(200).json({
+    success: true,
+    message: 'Sessao terminada'
+  });
 };
 
-exports.obterPerfil = async (req, res, next) => {
+exports.getMe = async (req, res) => {
   try {
-    const utilizador = await User.findById(req.user._id);
-
-    res.json({
+    const user = await User.findById(req.user.id);
+    res.status(200).json({
       success: true,
-      data: utilizador,
+      data: { user }
     });
-  } catch (erro) {
-    next(erro);
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
+
+exports.updateMe = async (req, res) => {
+  try {
+    const forbiddenFields = ['password', 'plan', 'poupMoedas', 'googleId'];
+    for (const field of forbiddenFields) {
+      if (req.body[field]) delete req.body[field];
+    }
+
+    const user = await User.findByIdAndUpdate(req.user.id, req.body, {
+      new: true,
+      runValidators: true
+    });
+
+    res.status(200).json({
+      success: true,
+      data: { user }
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
+
+exports.updateMode = async (req, res) => {
+  try {
+    const { financialMode } = req.body;
+    const validModes = ['sobrevivencia', 'recuperacao', 'estabilidade', 'crescimento', 'prosperidade'];
+
+    if (!validModes.includes(financialMode)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Modo financeiro invalido'
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { financialMode },
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      data: { user }
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
+
+exports.updateCoach = async (req, res) => {
+  try {
+    const { coachName, coachGender, coachPersonality } = req.body;
+
+    const updateData = {};
+    if (coachName) updateData.coachName = coachName;
+    if (coachGender) updateData.coachGender = coachGender;
+    if (coachPersonality) updateData.coachPersonality = coachPersonality;
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      updateData,
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      data: { user }
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
+
+exports.completeOnboarding = async (req, res) => {
+  try {
+    const {
+      income,
+      incomeFrequency,
+      financialMode,
+      coachName,
+      coachGender,
+      coachPersonality,
+      jarPercentages,
+      avatar
+    } = req.body;
+
+    const updateData = {
+      income: income || 0,
+      incomeFrequency: incomeFrequency || 'mensal',
+      financialMode: financialMode || 'sobrevivencia',
+      coachName: coachName || 'Ricardo',
+      coachGender: coachGender || 'm',
+      coachPersonality: coachPersonality || 'disciplinado',
+      onboardingComplete: true,
+      poupMoedas: 50
+    };
+
+    if (jarPercentages) updateData.jarPercentages = jarPercentages;
+    if (avatar) updateData.avatar = avatar;
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      updateData,
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      data: { user }
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
+
+exports.deleteMe = async (req, res) => {
+  try {
+    await User.findByIdAndDelete(req.user.id);
+    res.cookie('token', 'none', {
+      expires: new Date(Date.now() + 10 * 1000),
+      httpOnly: true
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Conta eliminada com sucesso'
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
   }
 };

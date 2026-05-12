@@ -1,12 +1,20 @@
 const express = require('express');
 const router = express.Router();
-const { registar, login, googleAuth, logout, obterPerfil } = require('../controllers/authController');
-const proteger = require('../middleware/auth');
+const {
+  register, login, googleAuth, logout,
+  getMe, updateMe, updateMode, updateCoach,
+  completeOnboarding, deleteMe
+} = require('../controllers/authController');
 
-router.post('/register', registar);
+router.post('/register', register);
 router.post('/login', login);
 router.post('/google-auth', googleAuth);
 router.post('/logout', logout);
-router.get('/me', proteger, obterPerfil);
+router.get('/me', getMe);
+router.put('/me', updateMe);
+router.put('/me/mode', updateMode);
+router.put('/me/coach', updateCoach);
+router.put('/me/onboarding', completeOnboarding);
+router.delete('/me', deleteMe);
 
 module.exports = router;

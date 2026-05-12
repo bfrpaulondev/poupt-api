@@ -1,42 +1,69 @@
 const mongoose = require('mongoose');
 
-const TransactionSchema = new mongoose.Schema({
+const transactionSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
+    index: true
   },
   type: {
     type: String,
     enum: ['receita', 'despesa'],
-    required: true,
+    required: true
   },
   amount: {
     type: Number,
-    required: true,
-    min: 0,
+    required: [true, 'Montante e obrigatorio'],
+    min: [0.01, 'Montante deve ser positivo']
   },
   category: {
     type: String,
-    required: true,
+    required: [true, 'Categoria e obrigatoria'],
+    enum: [
+      'alimentacao', 'habitacao', 'transportes', 'saude', 'educacao',
+      'lazer', 'roupa', 'divida', 'investimento', 'poupanca',
+      'salario', 'freelance', 'outro_rendimento', 'outro_gasto',
+      'emprestimo_dado', 'emprestimo_recebido', 'pagamento_divida'
+    ]
   },
   description: {
     type: String,
+    required: [true, 'Descricao e obrigatoria'],
+    trim: true,
+    maxlength: 200
   },
   jar: {
     type: String,
-    enum: ['necessidades', 'liberdade', 'poupanca', 'educacao', 'lazer', 'doar'],
+    enum: ['necessities', 'freedom', 'savings', 'education', 'play', 'give', null],
+    default: null
   },
   date: {
     type: Date,
-    default: Date.now,
+    default: Date.now
   },
-  createdAt: {
-    type: Date,
-    default: Date.now,
+  isRecurring: {
+    type: Boolean,
+    default: false
   },
+  recurringFrequency: {
+    type: String,
+    enum: ['mensal', 'semanal', null],
+    default: null
+  },
+  tags: [{
+    type: String,
+    trim: true
+  }],
+  notes: {
+    type: String,
+    default: ''
+  }
+}, {
+  timestamps: true
 });
 
-TransactionSchema.index({ userId: 1, date: -1 });
+transactionSchema.index({ userId: 1, date: -1 });
+transactionSchema.index({ userId: 1, category: 1 });
 
-module.exports = mongoose.model('Transaction', TransactionSchema);
+module.exports = mongoose.model('Transaction', transactionSchema);

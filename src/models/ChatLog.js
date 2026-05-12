@@ -1,44 +1,35 @@
 const mongoose = require('mongoose');
 
-const ChatLogSchema = new mongoose.Schema({
+const chatLogSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
+    index: true
   },
-  messages: [
-    {
-      role: {
-        type: String,
-        enum: ['user', 'assistant'],
-        required: true,
-      },
-      content: {
-        type: String,
-        required: true,
-      },
-      timestamp: {
-        type: Date,
-        default: Date.now,
-      },
+  messages: [{
+    role: {
+      type: String,
+      enum: ['user', 'assistant', 'system'],
+      required: true
     },
-  ],
+    content: {
+      type: String,
+      required: true
+    },
+    timestamp: {
+      type: Date,
+      default: Date.now
+    }
+  }],
   mode: {
     type: String,
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now,
-  },
+    enum: ['sobrevivencia', 'recuperacao', 'estabilidade', 'crescimento', 'prosperidade']
+  }
+}, {
+  timestamps: true
 });
 
-ChatLogSchema.pre('save', function (next) {
-  this.updatedAt = Date.now();
-  next();
-});
+chatLogSchema.index({ userId: 1, createdAt: -1 });
 
-module.exports = mongoose.model('ChatLog', ChatLogSchema);
+module.exports = mongoose.model('ChatLog', chatLogSchema);

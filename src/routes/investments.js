@@ -1,11 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const { listar, criar, atualizar, eliminar } = require('../controllers/investmentController');
-const proteger = require('../middleware/auth');
+const {
+  getInvestments, createInvestment,
+  updateInvestment, deleteInvestment
+} = require('../controllers/investmentController');
 
-router.get('/', proteger, listar);
-router.post('/', proteger, criar);
-router.put('/:id', proteger, atualizar);
-router.delete('/:id', proteger, eliminar);
+router.get('/', getInvestments);
+router.post('/', createInvestment);
+router.put('/:id', updateInvestment);
+router.delete('/:id', deleteInvestment);
 
 module.exports = router;

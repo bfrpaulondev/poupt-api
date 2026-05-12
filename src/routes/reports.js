@@ -1,10 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { resumo, mensal, progressoDividas } = require('../controllers/reportController');
-const proteger = require('../middleware/auth');
+const { getSummary, getMonthly, getDebtProgress } = require('../controllers/reportController');
 
-router.get('/summary', proteger, resumo);
-router.get('/monthly', proteger, mensal);
-router.get('/debt-progress', proteger, progressoDividas);
+router.get('/summary', getSummary);
+router.get('/monthly', getMonthly);
+router.get('/debt-progress', getDebtProgress);
 
 module.exports = router;

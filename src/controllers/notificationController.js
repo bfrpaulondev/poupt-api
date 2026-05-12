@@ -1,55 +1,95 @@
 const Notification = require('../models/Notification');
-const { paginacao } = require('../utils/helpers');
 
-exports.listar = async (req, res, next) => {
+exports.getNotifications = async (req, res) => {
   try {
-    const { page, limit, skip } = paginacao(req.query);
-    const filtros = { userId: req.user._id };
+    const { page = 1, limit = 20, isRead } = req.query;
+    const query = { userId: req.user.id };
+    if (isRead !== undefined) query.isRead = isRead === 'true';
 
-    if (req.query.read !== undefined) {
-      filtros.read = req.query.read === 'true';
-    }
+    const notifications = await Notification.find(query)
+      .sort('-createdAt')
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit));
 
-    if (req.query.type) filtros.type = req.query.type;
-
-    const total = await Notification.countDocuments(filtros);
-    const notificacoes = await Notification.find(filtros)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    const naoLidas = await Notification.countDocuments({
-      userId: req.user._id,
-      read: false,
+    const unreadCount = await Notification.countDocuments({
+      userId: req.user.id,
+      isRead: false
     });
 
-    res.json({
+    res.status(200).json({
       success: true,
-      data: notificacoes,
-      naoLidas,
-      paginacao: { page, limit, total, paginas: Math.ceil(total / limit) },
+      data: { notifications },
+      unreadCount
     });
-  } catch (erro) {
-    next(erro);
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
   }
 };
 
-exports.marcarComoLida = async (req, res, next) => {
+exports.markAsRead = async (req, res) => {
   try {
-    const notificacao = await Notification.findOne({
-      _id: req.params.id,
-      userId: req.user._id,
-    });
+    const notification = await Notification.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user.id },
+      { isRead: true },
+      { new: true }
+    );
 
-    if (!notificacao) {
-      return res.status(404).json({ success: false, error: 'Notificacao nao encontrada' });
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        error: 'Notificacao nao encontrada'
+      });
     }
 
-    notificacao.read = true;
-    await notificacao.save();
+    res.status(200).json({
+      success: true,
+      data: { notification }
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
 
-    res.json({ success: true, data: notificacao });
-  } catch (erro) {
-    next(erro);
+exports.markAllAsRead = async (req, res) => {
+  try {
+    await Notification.updateMany(
+      { userId: req.user.id, isRead: false },
+      { isRead: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Todas as notificacoes marcadas como lidas'
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
+
+exports.createNotification = async (req, res) => {
+  try {
+    const notification = await Notification.create({
+      ...req.body,
+      userId: req.user.id
+    });
+
+    res.status(201).json({
+      success: true,
+      data: { notification }
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err.message
+    });
   }
 };
