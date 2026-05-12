@@ -1,12 +1,12 @@
 const express = require('express');
 const router = express.Router();
+const { protect } = require('../middleware/auth');
 const { listar, criar, atualizar, eliminar, registarPagamento } = require('../controllers/informalDebtController');
-const proteger = require('../middleware/auth');
 
-router.get('/', proteger, listar);
-router.post('/', proteger, criar);
-router.put('/:id', proteger, atualizar);
-router.delete('/:id', proteger, eliminar);
-router.post('/:id/payment', proteger, registarPagamento);
+router.get('/', protect, listar);
+router.post('/', protect, criar);
+router.put('/:id', protect, atualizar);
+router.delete('/:id', protect, eliminar);
+router.post('/:id/payment', protect, registarPagamento);
 
 module.exports = router;

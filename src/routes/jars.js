@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
+const { protect } = require('../middleware/auth');
 const { obterFrascos, atualizarFrasco } = require('../controllers/jarController');
-const proteger = require('../middleware/auth');
 
-router.get('/', proteger, obterFrascos);
-router.put('/:id', proteger, atualizarFrasco);
+router.get('/', protect, obterFrascos);
+router.put('/:id', protect, atualizarFrasco);
 
 module.exports = router;
