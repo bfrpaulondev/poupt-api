@@ -4,6 +4,7 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
   'https://poupt-pwa.vercel.app',
+  'https://poupt-pwa-six.vercel.app',
   process.env.CLIENT_URL,
 ].filter(Boolean);
 
