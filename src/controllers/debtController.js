@@ -37,8 +37,10 @@ exports.getDebts = async (req, res) => {
 
 exports.createDebt = async (req, res) => {
   try {
+    // Whitelist allowed fields
+    const { type, creditorName, amount, interestRate, minimumPayment, dueDate, startDate, status, relationshipType, contactInfo, notes } = req.body;
     const debt = await Debt.create({
-      ...req.body,
+      type, creditorName, amount, interestRate, minimumPayment, dueDate, startDate, status, relationshipType, contactInfo, notes,
       userId: req.user.id
     });
 
@@ -186,7 +188,10 @@ exports.snowballOrder = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: { plan }
+      data: {
+        plan,
+        order: plan // Backward compatibility with frontend
+      }
     });
   } catch (err) {
     res.status(500).json({
@@ -240,8 +245,10 @@ exports.getInformalDebts = async (req, res) => {
 
 exports.createInformalDebt = async (req, res) => {
   try {
+    // Whitelist allowed fields
+    const { creditorName, amount, loanDate, returnDate, interestRate, status, notes, relationshipType, dueDate } = req.body;
     const debt = await Debt.create({
-      ...req.body,
+      creditorName, amount, loanDate, returnDate, interestRate, status, notes, relationshipType, dueDate,
       userId: req.user.id,
       type: 'informal'
     });

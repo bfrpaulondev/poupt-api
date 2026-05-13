@@ -216,12 +216,27 @@ exports.getMe = async (req, res) => {
 
 exports.updateMe = async (req, res) => {
   try {
-    const forbiddenFields = ['password', 'plan', 'poupMoedas', 'googleId'];
+    // Whitelist of allowed fields for update
+    const allowedFields = [
+      'name', 'avatar', 'income', 'incomeFrequency',
+      'coachName', 'coachGender', 'coachPersonality',
+      'financialMode', 'jarPercentages', 'theme', 'currency', 'language',
+      'notificationSettings', 'privacySettings', 'onboardingComplete'
+    ];
+    const forbiddenFields = ['password', 'plan', 'poupMoedas', 'googleId', 'email', 'streak', 'xp', 'level', 'trophies'];
+    
+    const updateData = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        updateData[field] = req.body[field];
+      }
+    }
+    // Remove any forbidden fields just in case
     for (const field of forbiddenFields) {
-      if (req.body[field]) delete req.body[field];
+      delete updateData[field];
     }
 
-    const user = await User.findByIdAndUpdate(req.user.id, req.body, {
+    const user = await User.findByIdAndUpdate(req.user.id, updateData, {
       new: true,
       runValidators: true
     });
@@ -429,8 +444,7 @@ exports.forgotPassword = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Se o email existir, receberas instrucoes para redefinir a palavra-passe',
-      resetToken // Apenas para desenvolvimento
+      message: 'Se o email existir, receberas instrucoes para redefinir a palavra-passe'
     });
   } catch (err) {
     res.status(500).json({

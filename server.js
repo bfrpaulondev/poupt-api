@@ -5,7 +5,7 @@ const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const { connectDB, reconnectDB, isDBConnected } = require('./src/config/db');
 const corsConfig = require('./src/config/cors');
-const rateLimiter = require('./src/middleware/rateLimiter');
+const { rateLimiter } = require('./src/middleware/rateLimiter');
 const errorHandler = require('./src/middleware/errorHandler');
 
 const authRoutes = require('./src/routes/auth');
@@ -67,7 +67,7 @@ const iniciarServidor = async () => {
     reconnectDB();
   }
 
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`Servidor PoupPT a correr na porta ${PORT}`);
   });
 

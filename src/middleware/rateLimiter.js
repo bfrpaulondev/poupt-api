@@ -11,4 +11,16 @@ const rateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-module.exports = rateLimiter;
+// Stricter rate limiter for auth routes (brute-force protection)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 attempts per window
+  message: {
+    success: false,
+    error: 'Demasiadas tentativas. Tenta novamente em 15 minutos.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+module.exports = { rateLimiter, authLimiter };

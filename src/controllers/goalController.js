@@ -17,8 +17,10 @@ exports.getGoals = async (req, res) => {
 
 exports.createGoal = async (req, res) => {
   try {
+    // Whitelist allowed fields
+    const { name, type, targetAmount, currentAmount, deadline, monthlyContribution, icon, color } = req.body;
     const goal = await Goal.create({
-      ...req.body,
+      name, type, targetAmount, currentAmount, deadline, monthlyContribution, icon, color,
       userId: req.user.id
     });
 

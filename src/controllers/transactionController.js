@@ -51,8 +51,10 @@ exports.getTransactions = async (req, res) => {
 
 exports.createTransaction = async (req, res) => {
   try {
+    // Whitelist allowed fields
+    const { type, amount, category, description, jar, date, isRecurring, recurringFrequency, notes, tags } = req.body;
     const transaction = await Transaction.create({
-      ...req.body,
+      type, amount, category, description, jar, date, isRecurring, recurringFrequency, notes, tags,
       userId: req.user.id
     });
 

@@ -30,8 +30,9 @@ exports.getInvestments = async (req, res) => {
 
 exports.createInvestment = async (req, res) => {
   try {
+    const { name, type, quantity, avgPrice, currentPrice, dividends, platform, currency, buyDate, notes } = req.body;
     const investment = await Investment.create({
-      ...req.body,
+      name, type, quantity, avgPrice, currentPrice, dividends, platform, currency, buyDate, notes,
       userId: req.user.id
     });
 
