@@ -93,7 +93,20 @@ const userSchema = new mongoose.Schema({
     savings: { type: Number, default: 10, min: 0, max: 100 },
     education: { type: Number, default: 10, min: 0, max: 100 },
     play: { type: Number, default: 10, min: 0, max: 100 },
-    give: { type: Number, default: 5, min: 0, max: 100 }
+    give: { type: Number, default: 10, min: 0, max: 100 }
+  },
+  theme: { type: String, default: 'darkGold' },
+  currency: { type: String, enum: ['EUR', 'USD', 'BRL', 'GBP'], default: 'EUR' },
+  language: { type: String, enum: ['pt', 'en', 'es'], default: 'pt' },
+  notificationSettings: {
+    debtReminders: { type: Boolean, default: true },
+    goalAlerts: { type: Boolean, default: true },
+    coachTips: { type: Boolean, default: true },
+    weeklyReports: { type: Boolean, default: true }
+  },
+  privacySettings: {
+    analytics: { type: Boolean, default: true },
+    personalizedTips: { type: Boolean, default: true }
   },
   googleId: {
     type: String,

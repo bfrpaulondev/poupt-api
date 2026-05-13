@@ -22,6 +22,8 @@ const moedaRoutes = require('./src/routes/moedas');
 const notificationRoutes = require('./src/routes/notifications');
 const creditorRoutes = require('./src/routes/creditors');
 
+const { processRecurringTransactions } = require('./src/services/recurringProcessor');
+
 const app = express();
 
 app.use(helmet());
@@ -68,6 +70,16 @@ const iniciarServidor = async () => {
   app.listen(PORT, () => {
     console.log(`Servidor PoupPT a correr na porta ${PORT}`);
   });
+
+  // Process recurring transactions every hour
+  setInterval(async () => {
+    try {
+      const count = await processRecurringTransactions();
+      if (count > 0) console.log(`[Cron] Processed ${count} recurring transactions`);
+    } catch (err) {
+      console.error('[Cron] Error processing recurring transactions:', err.message);
+    }
+  }, 60 * 60 * 1000);
 };
 
 iniciarServidor();

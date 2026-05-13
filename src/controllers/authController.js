@@ -70,6 +70,9 @@ exports.register = async (req, res) => {
     });
 
     createSendToken(user, 201, res);
+
+    const { sendWelcomeEmail } = require('../services/emailService');
+    sendWelcomeEmail(email, name).catch(() => {}); // fire and forget
   } catch (err) {
     res.status(400).json({
       success: false,
@@ -335,16 +338,20 @@ exports.completeOnboarding = async (req, res) => {
       avatar
     } = req.body;
 
+    const genderMap = { masculino: 'm', feminino: 'f', neutro: 'n', m: 'm', f: 'f', n: 'n' };
+
     const updateData = {
       income: income || 0,
       incomeFrequency: incomeFrequency || 'mensal',
       financialMode: financialMode || 'sobrevivencia',
-      coachName: coachName || 'Ricardo',
-      coachGender: coachGender || 'm',
+      coachName: coachName || 'Coach',
+      coachGender: genderMap[coachGender] || coachGender || 'm',
       coachPersonality: coachPersonality || 'disciplinado',
       onboardingComplete: true,
       poupMoedas: 50
     };
+
+    if (req.body.name) updateData.name = req.body.name;
 
     if (jarPercentages) updateData.jarPercentages = jarPercentages;
     if (avatar) updateData.avatar = avatar;
@@ -417,7 +424,9 @@ exports.forgotPassword = async (req, res) => {
 
     await user.save({ validateBeforeSave: false });
 
-    // Em producao, enviaria email com o token
+    const { sendResetEmail } = require('../services/emailService');
+    await sendResetEmail(email, resetToken);
+
     res.status(200).json({
       success: true,
       message: 'Se o email existir, receberas instrucoes para redefinir a palavra-passe',

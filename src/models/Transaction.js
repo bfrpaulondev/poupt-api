@@ -48,8 +48,17 @@ const transactionSchema = new mongoose.Schema({
   },
   recurringFrequency: {
     type: String,
-    enum: ['mensal', 'semanal', null],
+    enum: ['weekly', 'biweekly', 'monthly', 'yearly', null],
     default: null
+  },
+  nextOccurrence: {
+    type: Date,
+    default: null
+  },
+  status: {
+    type: String,
+    enum: ['active', 'paused', 'completed'],
+    default: 'active'
   },
   tags: [{
     type: String,

@@ -47,7 +47,10 @@ exports.getSummary = async (req, res) => {
         financialMode: user.financialMode,
         income: +income.toFixed(2),
         expenses: +expenses.toFixed(2),
+        totalIncome: +income.toFixed(2),
+        totalExpenses: +expenses.toFixed(2),
         balance: +(income - expenses).toFixed(2),
+        available: +(income - expenses).toFixed(2),
         totalDebt: +totalDebt.toFixed(2),
         overdueDebts: overdueDebts.length,
         poupMoedas: user.poupMoedas,
@@ -77,27 +80,64 @@ exports.getMonthly = async (req, res) => {
     const startDate = new Date(y, m - 1, 1);
     const endDate = new Date(y, m, 0, 23, 59, 59);
 
+    const user = await User.findById(req.user.id);
+
     const transactions = await Transaction.find({
       userId: req.user.id,
       date: { $gte: startDate, $lte: endDate }
     });
 
-    const income = transactions.filter(t => t.type === 'receita');
-    const expenses = transactions.filter(t => t.type === 'despesa');
+    const incomeTxns = transactions.filter(t => t.type === 'receita');
+    const expenseTxns = transactions.filter(t => t.type === 'despesa');
 
-    const totalIncome = income.reduce((sum, t) => sum + t.amount, 0);
-    const totalExpenses = expenses.reduce((sum, t) => sum + t.amount, 0);
+    const totalIncome = incomeTxns.reduce((sum, t) => sum + t.amount, 0);
+    const totalExpenses = expenseTxns.reduce((sum, t) => sum + t.amount, 0);
 
+    // Category breakdown as array (frontend expects this format)
     const byCategory = {};
-    expenses.forEach(t => {
+    expenseTxns.forEach(t => {
       byCategory[t.category] = (byCategory[t.category] || 0) + t.amount;
     });
+    const categoryBreakdown = Object.entries(byCategory).map(([category, total]) => ({
+      category,
+      total: +total.toFixed(2)
+    }));
 
-    const dailySpending = {};
-    expenses.forEach(t => {
-      const day = t.date.toISOString().split('T')[0];
-      dailySpending[day] = (dailySpending[day] || 0) + t.amount;
-    });
+    // Monthly breakdown for the last 6 months (for bar chart)
+    const monthlyBreakdown = [];
+    for (let i = 5; i >= 0; i--) {
+      let bm = m - i;
+      let by = y;
+      while (bm <= 0) { bm += 12; by--; }
+      const bStart = new Date(by, bm - 1, 1);
+      const bEnd = new Date(by, bm, 0, 23, 59, 59);
+      const bTxns = await Transaction.find({
+        userId: req.user.id,
+        date: { $gte: bStart, $lte: bEnd }
+      });
+      const bIncome = bTxns.filter(t => t.type === 'receita').reduce((s, t) => s + t.amount, 0);
+      const bExpenses = bTxns.filter(t => t.type === 'despesa').reduce((s, t) => s + t.amount, 0);
+      monthlyBreakdown.push({
+        month: new Date(by, bm - 1).toLocaleDateString('pt-PT', { month: 'short' }),
+        income: +bIncome.toFixed(2),
+        expenses: +bExpenses.toFixed(2)
+      });
+    }
+
+    // Jars allocation
+    const jarPercentages = user.jarPercentages || { necessities: 50, freedom: 10, savings: 10, education: 10, play: 10, give: 10 };
+    const jarsAllocation = Object.entries(jarPercentages).map(([jar, percentage]) => ({
+      jar,
+      name: { necessities: 'Necessidades', freedom: 'Liberdade', savings: 'Poupanca', education: 'Educacao', play: 'Lazer', give: 'Doar' }[jar] || jar,
+      percentage,
+      value: +(user.income * percentage / 100).toFixed(2)
+    }));
+
+    // Savings rate trend for last 6 months
+    const savingsRateTrend = monthlyBreakdown.map(m => ({
+      month: m.month,
+      rate: m.income > 0 ? +((m.income - m.expenses) / m.income * 100).toFixed(1) : 0
+    }));
 
     res.status(200).json({
       success: true,
@@ -110,8 +150,10 @@ exports.getMonthly = async (req, res) => {
         savingsRate: totalIncome > 0
           ? +((totalIncome - totalExpenses) / totalIncome * 100).toFixed(1)
           : 0,
-        byCategory,
-        dailySpending,
+        categoryBreakdown,
+        monthlyBreakdown,
+        jarsAllocation,
+        savingsRateTrend,
         transactionCount: transactions.length
       }
     });
@@ -160,5 +202,60 @@ exports.getDebtProgress = async (req, res) => {
       success: false,
       error: err.message
     });
+  }
+};
+
+exports.exportCSV = async (req, res) => {
+  try {
+    const { type = 'transactions', month, year } = req.query;
+    const now = new Date();
+    const m = parseInt(month) || now.getMonth() + 1;
+    const y = parseInt(year) || now.getFullYear();
+    const startDate = new Date(y, m - 1, 1);
+    const endDate = new Date(y, m, 0, 23, 59, 59);
+
+    if (type === 'transactions') {
+      const transactions = await Transaction.find({
+        userId: req.user.id,
+        date: { $gte: startDate, $lte: endDate }
+      }).sort({ date: -1 });
+
+      const headers = 'Data,Tipo,Categoria,Descricao,Montante,Frasco\n';
+      const rows = transactions.map(t =>
+        `${new Date(t.date).toLocaleDateString('pt-PT')},${t.type},${t.category},"${t.description}",${t.amount},${t.jar || ''}`
+      ).join('\n');
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename=transacoes_${m}_${y}.csv`);
+      return res.send('\uFEFF' + headers + rows); // BOM for Excel
+    }
+
+    if (type === 'debts') {
+      const debts = await Debt.find({ userId: req.user.id }).sort('amount');
+      const headers = 'Creditor,Montante,Pago,Restante,Taxa,Estado\n';
+      const rows = debts.map(d =>
+        `"${d.creditorName}",${d.amount},${d.amountPaid},${d.remainingAmount},${d.interestRate || 0}%,${d.status}`
+      ).join('\n');
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename=dividas.csv`);
+      return res.send('\uFEFF' + headers + rows);
+    }
+
+    if (type === 'goals') {
+      const goals = await Goal.find({ userId: req.user.id });
+      const headers = 'Nome,Tipo,Alvo,Atual,Progresso,Prazo\n';
+      const rows = goals.map(g =>
+        `"${g.name}",${g.type},${g.targetAmount},${g.currentAmount},${g.targetAmount > 0 ? (g.currentAmount / g.targetAmount * 100).toFixed(1) : 0}%,${g.deadline ? new Date(g.deadline).toLocaleDateString('pt-PT') : ''}`
+      ).join('\n');
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename=metas.csv`);
+      return res.send('\uFEFF' + headers + rows);
+    }
+
+    res.status(400).json({ success: false, error: 'Tipo de exportacao invalido' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 };
