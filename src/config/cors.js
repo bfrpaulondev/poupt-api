@@ -8,12 +8,17 @@ const allowedOrigins = [
   process.env.CLIENT_URL,
 ].filter(Boolean);
 
+// In production, also allow any Vercel deployment URL
+const isVercelDeployment = (origin) => {
+  return origin && origin.match(/https:\/\/[a-z0-9-]+\.vercel\.app$/);
+};
+
 const corsOptions = {
   origin: function (origin, callback) {
     // Allow requests with no origin (mobile apps, Postman, server-to-server)
     if (!origin) return callback(null, true);
     
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    if (allowedOrigins.indexOf(origin) !== -1 || isVercelDeployment(origin)) {
       callback(null, true);
     } else {
       // In development, allow all; in production, reject unknown origins
