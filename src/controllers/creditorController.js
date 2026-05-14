@@ -16,17 +16,19 @@ exports.getInteractions = async (req, res) => {
       data: { interactions }
     });
   } catch (err) {
+    console.error(err);
     res.status(500).json({
       success: false,
-      error: err.message
+      error: 'Erro interno do servidor'
     });
   }
 };
 
 exports.createInteraction = async (req, res) => {
   try {
+    const { creditorName, debtId, type, negotiationStatus, outcome, nextAction, contactInfo, notes } = req.body;
     const interaction = await CreditorInteraction.create({
-      ...req.body,
+      creditorName, debtId, type, negotiationStatus, outcome, nextAction, contactInfo, notes,
       userId: req.user.id
     });
 
@@ -35,18 +37,28 @@ exports.createInteraction = async (req, res) => {
       data: { interaction }
     });
   } catch (err) {
-    res.status(400).json({
-      success: false,
-      error: err.message
-    });
+    console.error(err);
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({ success: false, error: messages.join(', ') });
+    }
+    if (err.code === 11000) {
+      return res.status(400).json({ success: false, error: 'Registo duplicado' });
+    }
+    res.status(400).json({ success: false, error: 'Erro ao processar pedido' });
   }
 };
 
 exports.updateInteraction = async (req, res) => {
   try {
+    const { creditorName, type, negotiationStatus, outcome, nextAction, contactInfo, notes } = req.body;
+    const updateData = { creditorName, type, negotiationStatus, outcome, nextAction, contactInfo, notes };
+    // Remove undefined fields
+    Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
+
     const interaction = await CreditorInteraction.findOneAndUpdate(
       { _id: req.params.id, userId: req.user.id },
-      req.body,
+      updateData,
       { new: true, runValidators: true }
     );
 
@@ -62,10 +74,15 @@ exports.updateInteraction = async (req, res) => {
       data: { interaction }
     });
   } catch (err) {
-    res.status(400).json({
-      success: false,
-      error: err.message
-    });
+    console.error(err);
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({ success: false, error: messages.join(', ') });
+    }
+    if (err.code === 11000) {
+      return res.status(400).json({ success: false, error: 'Registo duplicado' });
+    }
+    res.status(400).json({ success: false, error: 'Erro ao processar pedido' });
   }
 };
 
@@ -106,9 +123,14 @@ exports.addHistoryEntry = async (req, res) => {
       data: { interaction }
     });
   } catch (err) {
-    res.status(400).json({
-      success: false,
-      error: err.message
-    });
+    console.error(err);
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({ success: false, error: messages.join(', ') });
+    }
+    if (err.code === 11000) {
+      return res.status(400).json({ success: false, error: 'Registo duplicado' });
+    }
+    res.status(400).json({ success: false, error: 'Erro ao processar pedido' });
   }
 };

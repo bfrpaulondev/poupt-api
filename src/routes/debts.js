@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/auth');
+const { protect, premiumOnly } = require('../middleware/auth');
 const {
   getDebts, createDebt, updateDebt, deleteDebt,
   addPayment, snowballOrder, snowballDetailed,
@@ -10,7 +10,7 @@ const {
 router.get('/', protect, getDebts);
 router.post('/', protect, createDebt);
 router.get('/snowball', protect, snowballOrder);
-router.post('/snowball/detailed', protect, snowballDetailed);
+router.post('/snowball/detailed', protect, premiumOnly, snowballDetailed);
 router.get('/informal', protect, getInformalDebts);
 router.post('/informal', protect, createInformalDebt);
 router.post('/informal/:id/payment', protect, addInformalPayment);

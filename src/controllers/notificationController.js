@@ -22,9 +22,10 @@ exports.getNotifications = async (req, res) => {
       unreadCount
     });
   } catch (err) {
+    console.error(err);
     res.status(500).json({
       success: false,
-      error: err.message
+      error: 'Erro interno do servidor'
     });
   }
 };
@@ -49,9 +50,10 @@ exports.markAsRead = async (req, res) => {
       data: { notification }
     });
   } catch (err) {
+    console.error(err);
     res.status(500).json({
       success: false,
-      error: err.message
+      error: 'Erro interno do servidor'
     });
   }
 };
@@ -68,17 +70,19 @@ exports.markAllAsRead = async (req, res) => {
       message: 'Todas as notificacoes marcadas como lidas'
     });
   } catch (err) {
+    console.error(err);
     res.status(500).json({
       success: false,
-      error: err.message
+      error: 'Erro interno do servidor'
     });
   }
 };
 
 exports.createNotification = async (req, res) => {
   try {
+    const { title, message, type, category, relatedId, priority } = req.body;
     const notification = await Notification.create({
-      ...req.body,
+      title, message, type, category, relatedId, priority,
       userId: req.user.id
     });
 
@@ -87,9 +91,14 @@ exports.createNotification = async (req, res) => {
       data: { notification }
     });
   } catch (err) {
-    res.status(400).json({
-      success: false,
-      error: err.message
-    });
+    console.error(err);
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({ success: false, error: messages.join(', ') });
+    }
+    if (err.code === 11000) {
+      return res.status(400).json({ success: false, error: 'Registo duplicado' });
+    }
+    res.status(400).json({ success: false, error: 'Erro ao processar pedido' });
   }
 };

@@ -8,9 +8,10 @@ exports.getGoals = async (req, res) => {
       data: { goals }
     });
   } catch (err) {
+    console.error(err);
     res.status(500).json({
       success: false,
-      error: err.message
+      error: 'Erro interno do servidor'
     });
   }
 };
@@ -29,18 +30,28 @@ exports.createGoal = async (req, res) => {
       data: { goal }
     });
   } catch (err) {
-    res.status(400).json({
-      success: false,
-      error: err.message
-    });
+    console.error(err);
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({ success: false, error: messages.join(', ') });
+    }
+    if (err.code === 11000) {
+      return res.status(400).json({ success: false, error: 'Registo duplicado' });
+    }
+    res.status(400).json({ success: false, error: 'Erro ao processar pedido' });
   }
 };
 
 exports.updateGoal = async (req, res) => {
   try {
+    const { name, type, targetAmount, currentAmount, deadline, monthlyContribution, icon, color } = req.body;
+    const updateData = { name, type, targetAmount, currentAmount, deadline, monthlyContribution, icon, color };
+    // Remove undefined fields
+    Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
+
     const goal = await Goal.findOneAndUpdate(
       { _id: req.params.id, userId: req.user.id },
-      req.body,
+      updateData,
       { new: true, runValidators: true }
     );
 
@@ -56,10 +67,15 @@ exports.updateGoal = async (req, res) => {
       data: { goal }
     });
   } catch (err) {
-    res.status(400).json({
-      success: false,
-      error: err.message
-    });
+    console.error(err);
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({ success: false, error: messages.join(', ') });
+    }
+    if (err.code === 11000) {
+      return res.status(400).json({ success: false, error: 'Registo duplicado' });
+    }
+    res.status(400).json({ success: false, error: 'Erro ao processar pedido' });
   }
 };
 
@@ -82,9 +98,10 @@ exports.deleteGoal = async (req, res) => {
       message: 'Meta eliminada'
     });
   } catch (err) {
+    console.error(err);
     res.status(500).json({
       success: false,
-      error: err.message
+      error: 'Erro interno do servidor'
     });
   }
 };
@@ -117,9 +134,14 @@ exports.updateGoalProgress = async (req, res) => {
       data: { goal }
     });
   } catch (err) {
-    res.status(400).json({
-      success: false,
-      error: err.message
-    });
+    console.error(err);
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({ success: false, error: messages.join(', ') });
+    }
+    if (err.code === 11000) {
+      return res.status(400).json({ success: false, error: 'Registo duplicado' });
+    }
+    res.status(400).json({ success: false, error: 'Erro ao processar pedido' });
   }
 };

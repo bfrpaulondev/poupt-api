@@ -42,9 +42,10 @@ exports.getTransactions = async (req, res) => {
       }
     });
   } catch (err) {
+    console.error(err);
     res.status(500).json({
       success: false,
-      error: err.message
+      error: 'Erro interno do servidor'
     });
   }
 };
@@ -68,18 +69,28 @@ exports.createTransaction = async (req, res) => {
       data: { transaction }
     });
   } catch (err) {
-    res.status(400).json({
-      success: false,
-      error: err.message
-    });
+    console.error(err);
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({ success: false, error: messages.join(', ') });
+    }
+    if (err.code === 11000) {
+      return res.status(400).json({ success: false, error: 'Registo duplicado' });
+    }
+    res.status(400).json({ success: false, error: 'Erro ao processar pedido' });
   }
 };
 
 exports.updateTransaction = async (req, res) => {
   try {
+    const { type, amount, category, description, jar, date, isRecurring, recurringFrequency, notes, tags } = req.body;
+    const updateData = { type, amount, category, description, jar, date, isRecurring, recurringFrequency, notes, tags };
+    // Remove undefined fields
+    Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
+
     const transaction = await Transaction.findOneAndUpdate(
       { _id: req.params.id, userId: req.user.id },
-      req.body,
+      updateData,
       { new: true, runValidators: true }
     );
 
@@ -95,10 +106,15 @@ exports.updateTransaction = async (req, res) => {
       data: { transaction }
     });
   } catch (err) {
-    res.status(400).json({
-      success: false,
-      error: err.message
-    });
+    console.error(err);
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({ success: false, error: messages.join(', ') });
+    }
+    if (err.code === 11000) {
+      return res.status(400).json({ success: false, error: 'Registo duplicado' });
+    }
+    res.status(400).json({ success: false, error: 'Erro ao processar pedido' });
   }
 };
 
@@ -121,9 +137,10 @@ exports.deleteTransaction = async (req, res) => {
       message: 'Transacao eliminada'
     });
   } catch (err) {
+    console.error(err);
     res.status(500).json({
       success: false,
-      error: err.message
+      error: 'Erro interno do servidor'
     });
   }
 };
@@ -179,9 +196,10 @@ exports.getSummary = async (req, res) => {
       }
     });
   } catch (err) {
+    console.error(err);
     res.status(500).json({
       success: false,
-      error: err.message
+      error: 'Erro interno do servidor'
     });
   }
 };

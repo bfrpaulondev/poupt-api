@@ -2,7 +2,7 @@ const InformalDebt = require('../models/InformalDebt');
 const { validarDividaInformal } = require('../utils/validators');
 const { paginacao } = require('../utils/helpers');
 
-exports.listar = async (req, res, next) => {
+exports.listar = async (req, res) => {
   try {
     const { page, limit, skip } = paginacao(req.query);
     const filtros = { userId: req.user.id };
@@ -20,30 +20,40 @@ exports.listar = async (req, res, next) => {
       data: dividas,
       paginacao: { page, limit, total, paginas: Math.ceil(total / limit) },
     });
-  } catch (erro) {
-    next(erro);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Erro interno do servidor' });
   }
 };
 
-exports.criar = async (req, res, next) => {
+exports.criar = async (req, res) => {
   try {
     const erros = validarDividaInformal(req.body);
     if (erros.length > 0) {
       return res.status(400).json({ success: false, error: erros.join(', ') });
     }
 
+    const { creditorName, amount, loanDate, returnDate, interestRate, status, notes, relationshipType, dueDate } = req.body;
     const divida = await InformalDebt.create({
-      ...req.body,
+      creditorName, amount, loanDate, returnDate, interestRate, status, notes, relationshipType, dueDate,
       userId: req.user.id,
     });
 
     res.status(201).json({ success: true, data: divida });
-  } catch (erro) {
-    next(erro);
+  } catch (err) {
+    console.error(err);
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({ success: false, error: messages.join(', ') });
+    }
+    if (err.code === 11000) {
+      return res.status(400).json({ success: false, error: 'Registo duplicado' });
+    }
+    res.status(400).json({ success: false, error: 'Erro ao processar pedido' });
   }
 };
 
-exports.atualizar = async (req, res, next) => {
+exports.atualizar = async (req, res) => {
   try {
     let divida = await InformalDebt.findOne({
       _id: req.params.id,
@@ -54,18 +64,31 @@ exports.atualizar = async (req, res, next) => {
       return res.status(404).json({ success: false, error: 'Divida informal nao encontrada' });
     }
 
-    divida = await InformalDebt.findByIdAndUpdate(req.params.id, req.body, {
+    const { creditorName, amount, loanDate, returnDate, interestRate, status, notes, relationshipType, dueDate } = req.body;
+    const updateData = { creditorName, amount, loanDate, returnDate, interestRate, status, notes, relationshipType, dueDate };
+    // Remove undefined fields
+    Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
+
+    divida = await InformalDebt.findByIdAndUpdate(req.params.id, updateData, {
       new: true,
       runValidators: true,
     });
 
     res.json({ success: true, data: divida });
-  } catch (erro) {
-    next(erro);
+  } catch (err) {
+    console.error(err);
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({ success: false, error: messages.join(', ') });
+    }
+    if (err.code === 11000) {
+      return res.status(400).json({ success: false, error: 'Registo duplicado' });
+    }
+    res.status(400).json({ success: false, error: 'Erro ao processar pedido' });
   }
 };
 
-exports.eliminar = async (req, res, next) => {
+exports.eliminar = async (req, res) => {
   try {
     const divida = await InformalDebt.findOne({
       _id: req.params.id,
@@ -79,12 +102,13 @@ exports.eliminar = async (req, res, next) => {
     await divida.deleteOne();
 
     res.json({ success: true, data: {} });
-  } catch (erro) {
-    next(erro);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Erro interno do servidor' });
   }
 };
 
-exports.registarPagamento = async (req, res, next) => {
+exports.registarPagamento = async (req, res) => {
   try {
     const divida = await InformalDebt.findOne({
       _id: req.params.id,
@@ -118,7 +142,15 @@ exports.registarPagamento = async (req, res, next) => {
     await divida.save();
 
     res.json({ success: true, data: divida });
-  } catch (erro) {
-    next(erro);
+  } catch (err) {
+    console.error(err);
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({ success: false, error: messages.join(', ') });
+    }
+    if (err.code === 11000) {
+      return res.status(400).json({ success: false, error: 'Registo duplicado' });
+    }
+    res.status(400).json({ success: false, error: 'Erro ao processar pedido' });
   }
 };
